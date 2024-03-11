@@ -1,31 +1,43 @@
 name: facebookresearch/habitat-lab/install_and_test
 on:
-  push:
+  pull_request:
     branches:
-    - main
+      - main
+  schedule:
+    - cron: 0 7 * * *
+  push:
+    tags:
+      - v**
 env:
   CODECOV_TOKEN: xxxx91d3
 jobs:
-  pre-commit:
-    defaults:
-      run:
-        working-directory: "~/repo/"
+  set-date:
     runs-on: ubuntu-latest
-    container:
-      image: python:3.9.16
+    outputs:
+      date: ${{ steps.set_date.outputs.date }}
     steps:
-    - uses: actions/checkout@v4.1.0
+    - name: Combine precommit config and python versions for caching
+      id: set_date
+      run: |-
+        echo "date=$(date +%F)" >> "$GITHUB_OUTPUT"
+  pre-commit:
+    runs-on: ubuntu-latest
+    needs: set-date
+    steps:
+    - uses: actions/checkout@v4.1.1
+    - name: Setup python
+      uses: actions/setup-python@v5.0.0
+      with:
+        python-version: '3.9.16'
     - name: Combine precommit config and python versions for caching
       run: |-
-        echo $(date +%F) > ./date
         cat .pre-commit-config.yaml > pre-commit-deps.txt
         python -VV >> pre-commit-deps.txt
     - name: restore_cache
       uses: actions/cache@v3.3.2
       with:
-        key: v1-precommit-deps-{{ checksum "pre-commit-deps.txt" }}-{{ checksum "./date" }}
+        key: v1-precommit-deps-{{ hashFiles('pre-commit-deps.tx') }}-{{ needs.set-date.outputs.date }}
         path: "~/.cache/pre-commit"
-        restore-keys: v1-precommit-deps-{{ checksum "pre-commit-deps.txt" }}-{{ checksum "./date" }}
     - name: Install Dependencies
       run: |-
         pip install -U pip setuptools pre-commit
@@ -35,10 +47,12 @@ jobs:
       run: SKIP=clang-format,eslint pre-commit run --show-diff-on-failure --all-files
   python_lint:
     runs-on: ubuntu-latest
-    container:
-      image: python:3.9.16
     steps:
     - uses: actions/checkout@v4.1.0
+    - name: Setup python
+      uses: actions/setup-python@v5.0.0
+      with:
+        python-version: '3.9.16'
     - name: setup
       run: |-
         pip install black==23.1.0 --progress-bar off
@@ -70,15 +84,6 @@ jobs:
     - uses: actions/checkout@v4.1.0
       with:
         path: "./habitat-lab"
-    - name: Install cmake
-      run: |-
-        echo $(date +%F) > ./date
-        echo $(git ls-remote https://github.com/facebookresearch/habitat-sim.git HEAD | awk '{ print $1}') > ./hsim_sha
-        cat ./hsim_sha
-        wget https://github.com/Kitware/CMake/releases/download/v3.13.4/cmake-3.13.4-Linux-x86_64.sh
-        sudo mkdir /opt/cmake
-        sudo sh ./cmake-3.13.4-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
-        sudo ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
     - name: Install dependencies
       run: |-
         sudo apt-get update || true
@@ -108,12 +113,11 @@ jobs:
             texlive-fonts-recommended
     - name: Check CUDA
       run: nvidia-smi
-    - name: restore_cache
+    - name: Cache conda
       uses: actions/cache@v3.3.2
       with:
-        key: conda-{{ checksum "habitat-lab/.circleci/config.yml" }}-{{ checksum "./date" }}
+        key: conda-{{ hashFiles('habitat-lab/.circleci/config.yml') }}-{{ needs.set-date.outputs.date }}
         path: "~/miniconda"
-        restore-keys: conda-{{ checksum "habitat-lab/.circleci/config.yml" }}-{{ checksum "./date" }}
     - name: Install conda and dependencies
       run: |-
         if [ ! -d ~/miniconda ]
@@ -145,15 +149,13 @@ jobs:
     - name: restore_cache
       uses: actions/cache@v3.3.2
       with:
-        key: v1-habitat-sim-{{ checksum "./hsim_sha" }}-{{ checksum "./date" }}
+        key: v1-habitat-sim-{{ hashFiles('./hsim_sha') }}-{{ needs.set-date.outputs.date }}
         path: "./habitat-sim"
-        restore-keys: v1-habitat-sim-{{ checksum "./hsim_sha" }}-{{ checksum "./date" }}
-    - name: restore_cache
+    - name: Cache ccache
       uses: actions/cache@v3.3.2
       with:
-        key: ccache-{{ arch }}-main-{{ checksum "./date" }}
-        path: "/home/circleci/.ccache"
-        restore-keys: ccache-{{ arch }}-main-{{ checksum "./date" }}
+        key: ccache-{{ arch }}-main-{{ needs.set-date.outputs.date }}
+        path: .ccache
     - name: CCache initialization
       run: |-
         export PATH=$HOME/miniconda/bin:/usr/local/cuda/bin:$PATH
@@ -178,7 +180,6 @@ jobs:
         export PATH=$HOME/miniconda/bin:/usr/local/cuda/bin:$PATH
         . activate habitat;
         ccache --show-stats
-      if: always()
     - name: Download test data
       run: |-
         sudo apt install git-lfs
@@ -303,3 +304,57 @@ jobs:
     - uses: actions/upload-artifact@v4.0.0
       with:
         path: habitat-lab/data/profile
+  pypi_deploy:
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    needs:
+    - pre-commit
+    - python_lint
+    - install_and_test_ubuntu
+    env:
+      FPS_THRESHOLD: 900
+      username_env_var: TESTPYPI_USERNAME
+      password_env_var: TESTPYPI_PASSWORD
+      repository: testpypi
+      PYPI_PASSWORD:
+      PYPI_USERNAME:
+      TESTPYPI_PASSWORD:
+      TESTPYPI_USERNAME:
+    steps:
+    - uses: actions/checkout@v4.1.0
+      with:
+        path: "./habitat-lab"
+    - name: Install conda
+      run: |-
+        if [ ! -d ~/miniconda ]
+        then
+          curl -o ~/miniconda.sh -O  https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+          chmod +x ~/miniconda.sh
+          bash ~/miniconda.sh -b -p $HOME/miniconda
+          rm ~/miniconda.sh
+        fi
+    - name: Build sdist and bdist
+      run: |-
+        cd habitat-lab
+        export PATH=$HOME/miniconda/bin:/usr/local/cuda/bin:$PATH
+        conda create -y -n build-env python=3.9
+        . activate build-env
+        pip install --upgrade build
+        python -m build -s -w -C--global-option=egg_info -C--global-option=--tag-date habitat-lab/
+        python -m build -s -w -C--global-option=egg_info -C--global-option=--tag-date habitat-baselines/
+    - name: Deploy Habitat-Lab and Habitat-Baselines distributions to PyPI
+      run: |-
+        cd habitat-lab
+        export PATH=$HOME/miniconda/bin:/usr/local/cuda/bin:$PATH
+        . activate build-env
+        pip install --upgrade twine
+        twine upload \
+          --username ${${{ env.username_env_var }}} \
+          --password ${${{ env.password_env_var }}} \
+          --repository ${{ env.repository }} \
+          habitat-lab/dist/*
+        twine upload \
+          --username ${${{ env.username_env_var }}} \
+          --password ${${{ env.password_env_var }}} \
+          --repository ${{ env.repository }} \
+          habitat-baselines/dist/*
