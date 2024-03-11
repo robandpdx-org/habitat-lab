@@ -111,10 +111,14 @@ jobs:
             texlive-latex-extra \
             texlive-fonts-extra \
             texlive-fonts-recommended
+    - name: Setup python
+      uses: actions/setup-python@v5.0.0
+      with:
+        python-version: '3.9.16'
     - uses: Jimver/cuda-toolkit@v0.2.14
       id: cuda-toolkit
       with:
-        cuda: '12.3.2'
+        cuda: '11.3.1'
     - name: Check CUDA
       run: nvidia-smi
     - name: Cache conda
