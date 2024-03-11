@@ -133,7 +133,7 @@ jobs:
       shell: bash
     - name: Check CUDA
       run: |
-        ls -lR /usr/local/cuda
+        ls -lR /etc/alternatives/cuda
         nvidia-smi
     - name: Cache conda
       uses: actions/cache@v3.3.2
