@@ -77,7 +77,7 @@ jobs:
         if test -d  habitat ;           then  echo "folder habitat should not exist";           exit 1; fi
         if test -d  habitat_baselines ; then  echo "folder habitat_baselines should not exist"; exit 1; fi
   install_and_test_ubuntu:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     env:
       FPS_THRESHOLD: 900
     steps:
