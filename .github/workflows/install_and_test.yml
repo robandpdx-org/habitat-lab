@@ -113,6 +113,8 @@ jobs:
             texlive-fonts-recommended
     - uses: Jimver/cuda-toolkit@v0.2.14
       id: cuda-toolkit
+      with:
+        cuda: '12.3.2'
     - name: Check CUDA
       run: nvidia-smi
     - name: Cache conda
