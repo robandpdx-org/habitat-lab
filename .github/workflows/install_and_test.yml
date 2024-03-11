@@ -132,7 +132,9 @@ jobs:
         sudo apt-get -y install cuda-toolkit-12-3
       shell: bash
     - name: Check CUDA
-      run: nvidia-smi
+      run: |
+        ls -lR /usr/local/cuda
+        nvidia-smi
     - name: Cache conda
       uses: actions/cache@v3.3.2
       with:
