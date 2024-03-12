@@ -106,7 +106,7 @@ jobs:
             libhdf5-dev \
             libomp-dev \
             unzip || true
-        sudo apt install --allow-change-held-packages \
+        sudo apt install -y --allow-change-held-packages \
             texlive-base \
             texlive-latex-extra \
             texlive-fonts-extra \
