@@ -105,7 +105,8 @@ jobs:
             lcov\
             libhdf5-dev \
             libomp-dev \
-            unzip || true
+            unzip \
+            cmake
         sudo apt install -y --allow-change-held-packages \
             texlive-base \
             texlive-latex-extra \
@@ -130,11 +131,9 @@ jobs:
         sudo dpkg -i cuda-keyring_1.1-1_all.deb
         sudo apt-get update
         sudo apt-get -y install cuda-toolkit-12-3
-        if command -v nvidia-smi; then nvidia-smi; fi
       shell: bash
     - name: Check CUDA
       run: |
-        ls -lR /usr/local/cuda/bin
         nvidia-smi
     - name: Cache conda
       uses: actions/cache@v3.3.2
